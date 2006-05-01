@@ -16,6 +16,8 @@ WriteMakefile(
         'Class::Data::Inheritable' => 0,
         'Class::Accessor::Fast' => 0,
         'Class::ErrorHandler' => 0,
+        'Storable' => 0,
+        'Digest::MD5' => 0,
     },
     dist                => { COMPRESS => 'gzip -9f', SUFFIX => 'gz', },
     clean               => { FILES => 'Hatena-Keyword-*' },

@@ -8,7 +8,7 @@ use URI;
 use RPC::XML;
 use RPC::XML::Client;
 
-our $VERSION = 0.03;
+our $VERSION = 0.04;
 
 my @Fields = qw(refcount word score cname);
 __PACKAGE__->mk_accessors(@Fields);
@@ -22,7 +22,7 @@ sub extract {
     my $body = shift or croak sprintf 'usage %s->extract($text)', $class;
     my $args = shift || {};
     $args->{mode} = 'lite';
-    my $res = $class->_call_rpc($body, $args)
+    my $res = $class->_call_rpc_with_cache($body, $args)
         or $class->error($class->errstr);
     my @keywords = map { $class->_instance_from_rpcdata($_) }@{$res->{wordlist}};
     return wantarray ? @keywords : \@keywords;
@@ -33,9 +33,35 @@ sub markup_as_html {
     my $body = shift or croak sprintf 'usage %s->markup_as_html($text)', $class;
     my $args = shift || {};
     $args->{mode} = '';
-    my $res = $class->_call_rpc($body, $args)
+    my $res = $class->_call_rpc_with_cache($body, $args)
         or $class->error($class->errstr);
     return $res->value;
+}
+
+sub _call_rpc_with_cache {
+    my $class = shift;
+    my ($body, $args) = @_;
+    $body = pack('C0A*', $body); # hacking for utf-8 flag
+    my $cache = delete $args->{cache};
+    return $class->_call_rpc($body, $args) unless ref($cache);
+    croak "cache object must have get and set method."
+        if not $cache->can('get') or not $cache->can('set');
+
+    require Digest::MD5;
+    require Storable;
+    my $key = sprintf(
+        '%s-%s-%s',
+        $args->{mode} || '',
+        Digest::MD5::md5_hex($body),
+        Digest::MD5::md5_hex(Storable::freeze($args)),
+    );
+    my $res = Storable::thaw($cache->get($key));
+    unless (defined $res) {
+        $res = $class->_call_rpc($body, $args)
+            or return $class->error($class->errstr);
+        $cache->set($key =>Storable::freeze($res));
+    }
+    $res;
 }
 
 sub _call_rpc {
@@ -70,7 +96,7 @@ sub _instance_from_rpcdata {
 sub jcode {
     my $self = shift;
     $self->{_jcode} and return $self->{_jcode};
-    require Jcode; # lazy load
+    require Jcode;
     return $self->{_jcode} = Jcode->new($self->as_string, 'utf8');
 }
 
@@ -97,14 +123,22 @@ Version 0.03
 
     $keywords = Hatena::Keyword->extract("Hello, Perl!", {
         score => 20,
-        cname => qw[(hatena web book)],
+        cname => [qw(hatena web book)],
     });
     print $_->refcount, "\t", $_->jcode->euc for @$keywords;
+
+    my $cache = Cache::File->new(
+        cache_root      => '/path/to/cache',
+        default_expires => '3600 sec',
+    );
+    $keywords = Hatena::Keyword->extract("Hello, Hatena!",  {
+        cache => $cache,
+    });
 
     $html = Hatena::Keyword->markup_as_html("Perl and Ruby");
     $html = Hatena::Keyword->markup_as_html("Hello, Perl!", {
         score    => 20,
-        cname    => qw[(hatena web book)],
+        cname    => [qw(hatena web book)],
         a_class  => 'keyword',
         a_target => '_blank',
     });
@@ -135,8 +169,8 @@ objects extracted from specified text as first argument.
 This method works correctly for Japanese characters but their encoding
 must be utf-8. And also returned words are encoded as utf-8 string.
 
-Second argument is a option, which will be passed through to the
-XML-RPC API.
+Second argument is a option. Almost all key and values will be passed
+through to the XML-RPC API, excluding cache option.
 
 =head2 markup_as_html($text, \%options)
 
@@ -177,14 +211,51 @@ Returns a category name of the word.
 
 Returns a Jcode objet which contains the word.
 
+=head1 CACHING
+
+Responses returned by Web API(XML-RPC) can be cached locally.
+C<extract> method and C<markup_as_html> accept a reference to a
+C<Cache> object as cache option. This means that you can pick out one
+of Cache's companions like C<Cache::Memory>, C<Cache::File>, etc. In
+fact, any other type of cache implementation will do as well, see the
+requirements below.
+
+    use Cache::File;
+    my $cache = Cache::File->new(
+        cache_root        => '/tmp/mycache',
+        default_expires   => '30 min',
+    );
+
+    my $keywords = Hatena::Keyword->extract(
+        "Perl and Ruby",
+        { cache => $cache },
+    );
+
+C<Hatena::Keyword> uses I<positive> caching only, errors won't be
+cached.  Erroneous requests will be sent to API server every
+time.
+
+Caching isn't limited to the C<Cache> class. Any cache object which
+adheres to the following interface can be used:
+
+    # Set a cache value
+    $cache->set($key, $value);
+
+    # Return a cached value, 'undef' if it doesn't exist
+    $cache->get($key);
+
 =head1 ACKNOWLEDGEMENTS
 
-Hideyo Imazu L<http://d.hatena.ne.jp/himazublog/> help me writing the
-English documents.
+Hideyo Imazu L<http://d.hatena.ne.jp/himazublog/> helped me writing
+the English documents.
 
 Hideyo and kosaki L<http://mkosaki.blog46.fc2.com/> and tsupo
-<http://watcher.moe-nifty.com/> helped my decision to change the name
+L<http://watcher.moe-nifty.com/> helped my decision to change the name
 of the method.
+
+Kazuhiro Osawa L<http://yappo.jp/> and Yuichi Tateno
+L<http://d.hatena.ne.jp/secondlife/> gave me an inspiration for
+caching implementation.
 
 =head1 AUTHOR
 

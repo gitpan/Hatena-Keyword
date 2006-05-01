@@ -1,8 +1,9 @@
 #!perl -T
 use strict;
 use warnings;
-use Test::More tests => 23;
+use Test::More tests => 25;
 use Hatena::Keyword;
+use utf8;
 
 my $text = "Perl and Ruby";
 my $keywords = Hatena::Keyword->extract($text);
@@ -42,4 +43,7 @@ $html = Hatena::Keyword->markup_as_html($text, {
 like $html, qr/class="keyword"/;
 like $html, qr/target="_blank"/;
 
-
+my $flagged_multibytes = "はてなとはてなブックマーク";
+my $japanese = Hatena::Keyword->extract($flagged_multibytes);
+ok ref $japanese;
+ok scalar @$japanese;
