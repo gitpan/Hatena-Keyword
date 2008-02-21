@@ -1,5 +1,8 @@
 Revision history for Hatena-Keyword
 
+0.05    2008-02-11T12:12:00+09:00
+        - fix PREREQ for adding Cache::File
+
 0.04    2006-05-01T11:09:04+09:00
         - RPC response caching support for extract() and
           markup_as_html().

@@ -8,7 +8,7 @@ use URI;
 use RPC::XML;
 use RPC::XML::Client;
 
-our $VERSION = 0.04;
+our $VERSION = 0.05;
 
 my @Fields = qw(refcount word score cname);
 __PACKAGE__->mk_accessors(@Fields);
